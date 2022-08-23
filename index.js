@@ -1,5 +1,5 @@
 const chartconverter = require('bindings')('chartconverterjs.node')
-exports = chartconverter.ConvertChart;
+exports.ConvertChart = chartconverter.ConvertChart;
 
 // const fs = require('fs')
 
