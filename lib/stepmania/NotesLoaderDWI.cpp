@@ -9,6 +9,7 @@
 #include "Steps.h"
 #include "NotesLoader.h"
 #include "Difficulty.h"
+#include "RageFile.h"
 
 #include <map>
 
@@ -463,6 +464,210 @@ static float ParseBrokenDWITimestamp( const RString &arg1, const RString &arg2, 
 	return HHMMSSToSeconds( arg1+":"+arg2+":"+arg3 );
 }
 
+bool NotesLoaderDWI::LoadFromSimfile(RageFile& f, Song &out )
+{
+	RString sPath = f.GetPath();
+
+	MsdFile msd;
+	if( !msd.ReadFile( f, false ) )  // don't unescape
+	{
+		LOG->UserLog( "Song file", sPath, "couldn't be opened: %s", msd.GetError().c_str() );
+		return false;
+	}
+
+	out.m_sSongFileName = sPath;
+
+	for( unsigned i=0; i<msd.GetNumValues(); i++ )
+	{
+		int iNumParams = msd.GetNumParams(i);
+		const MsdFile::value_t &sParams = msd.GetValue(i);
+		RString sValueName = sParams[0];
+
+		if( iNumParams < 1 )
+		{
+			LOG->UserLog( "Song file", sPath, "has tag \"%s\" with no parameters.", sValueName.c_str() );
+			continue;
+		}
+
+		// handle the data
+		if( sValueName.EqualsNoCase("FILE") )
+			out.m_sMusicFile = sParams[1];
+
+		else if( sValueName.EqualsNoCase("TITLE") )
+		{
+			NotesLoader::GetMainAndSubTitlesFromFullTitle( sParams[1], out.m_sMainTitle, out.m_sSubTitle );
+
+			/* As far as I know, there's no spec on the encoding of this text. (I didn't
+			 * look very hard, though.)  I've seen at least one file in ISO-8859-1. */
+			ConvertString( out.m_sMainTitle, "utf-8,english" );
+			ConvertString( out.m_sSubTitle, "utf-8,english" );
+		}
+
+		else if( sValueName.EqualsNoCase("ARTIST") )
+		{
+			out.m_sArtist = sParams[1];
+			ConvertString( out.m_sArtist, "utf-8,english" );
+		}
+		
+		else if( sValueName.EqualsNoCase("GENRE") )
+		{
+			out.m_sGenre = sParams[1];
+			ConvertString( out.m_sGenre, "utf-8,english" );
+		}
+
+		else if( sValueName.EqualsNoCase("CDTITLE") )
+			out.m_sCDTitleFile = sParams[1];
+
+		else if( sValueName.EqualsNoCase("BPM") )
+		{
+			const float fBPM = StringToFloat( sParams[1] );
+			out.m_SongTiming.AddSegment( BPMSegment(0, fBPM) );
+		}
+		else if( sValueName.EqualsNoCase("DISPLAYBPM") )
+		{
+			// #DISPLAYBPM:[xxx..xxx]|[xxx]|[*];
+		    int iMin, iMax;
+			/* We can't parse this as a float with sscanf, since '.' is a valid
+			 * character in a float.  (We could do it with a regex, but it's not
+			 * worth bothering with since we don't display fractional BPM anyway.) */
+		    if( sscanf( sParams[1], "%i..%i", &iMin, &iMax ) == 2 )
+			{
+				out.m_DisplayBPMType = DISPLAY_BPM_SPECIFIED;
+				out.m_fSpecifiedBPMMin = (float) iMin;
+				out.m_fSpecifiedBPMMax = (float) iMax;
+			}
+			else if( sscanf( sParams[1], "%i", &iMin ) == 1 )
+			{
+				out.m_DisplayBPMType = DISPLAY_BPM_SPECIFIED;
+				out.m_fSpecifiedBPMMin = out.m_fSpecifiedBPMMax = (float) iMin;
+			}
+			else
+			{
+				out.m_DisplayBPMType = DISPLAY_BPM_RANDOM;
+			}
+		}
+
+		else if( sValueName.EqualsNoCase("GAP") )
+			// the units of GAP is 1/1000 second
+			out.m_SongTiming.m_fBeat0OffsetInSeconds = -StringToInt(sParams[1]) / 1000.0f;
+
+		else if( sValueName.EqualsNoCase("SAMPLESTART") )
+			out.m_fMusicSampleStartSeconds = ParseBrokenDWITimestamp(sParams[1], sParams[2], sParams[3]);
+
+		else if( sValueName.EqualsNoCase("SAMPLELENGTH") )
+		{
+			float sampleLength = ParseBrokenDWITimestamp(sParams[1], sParams[2], sParams[3]);
+			if (sampleLength > 0 && sampleLength < 1) {
+				// there were multiple versions of this tag allegedly: ensure a decent length if requested.
+				sampleLength *= 1000;
+			}
+			out.m_fMusicSampleLengthSeconds = sampleLength;
+
+		}
+
+		else if( sValueName.EqualsNoCase("FREEZE") )
+		{
+			vector<RString> arrayFreezeExpressions;
+			split( sParams[1], ",", arrayFreezeExpressions );
+
+			for( unsigned f=0; f<arrayFreezeExpressions.size(); f++ )
+			{
+				vector<RString> arrayFreezeValues;
+				split( arrayFreezeExpressions[f], "=", arrayFreezeValues );
+				if( arrayFreezeValues.size() != 2 )
+				{
+					LOG->UserLog( "Song file", sPath, "has an invalid FREEZE: '%s'.", arrayFreezeExpressions[f].c_str() );
+					continue;
+				}
+				int iFreezeRow = BeatToNoteRow( StringToFloat(arrayFreezeValues[0]) / 4.0f );
+				float fFreezeSeconds = StringToFloat( arrayFreezeValues[1] ) / 1000.0f;
+
+				out.m_SongTiming.AddSegment( StopSegment(iFreezeRow, fFreezeSeconds) );
+//				LOG->Trace( "Adding a freeze segment: beat: %f, seconds = %f", fFreezeBeat, fFreezeSeconds );
+			}
+		}
+
+		else if( sValueName.EqualsNoCase("CHANGEBPM")  || sValueName.EqualsNoCase("BPMCHANGE") )
+		{
+			vector<RString> arrayBPMChangeExpressions;
+			split( sParams[1], ",", arrayBPMChangeExpressions );
+
+			for( unsigned b=0; b<arrayBPMChangeExpressions.size(); b++ )
+			{
+				vector<RString> arrayBPMChangeValues;
+				split( arrayBPMChangeExpressions[b], "=", arrayBPMChangeValues );
+				if( arrayBPMChangeValues.size() != 2 )
+				{
+					LOG->UserLog( "Song file", sPath, "has an invalid CHANGEBPM: '%s'.", arrayBPMChangeExpressions[b].c_str() );
+					continue;
+				}
+
+				int iStartIndex = BeatToNoteRow( StringToFloat(arrayBPMChangeValues[0]) / 4.0f );
+				float fBPM = StringToFloat( arrayBPMChangeValues[1] );
+				if( fBPM > 0.0f )
+					out.m_SongTiming.AddSegment( BPMSegment(iStartIndex, fBPM) );
+				else
+					LOG->UserLog( "Song file", sPath, "has an invalid BPM change at beat %f, BPM %f.",
+						      NoteRowToBeat(iStartIndex), fBPM );
+			}
+		}
+
+		else if( sValueName.EqualsNoCase("SINGLE")  || 
+			 sValueName.EqualsNoCase("DOUBLE")  ||
+			 sValueName.EqualsNoCase("COUPLE")  || 
+			 sValueName.EqualsNoCase("SOLO") )
+		{
+			Steps* pNewNotes = out.CreateSteps();
+			LoadFromDWITokens( 
+				sParams[0], 
+				sParams[1], 
+				sParams[2], 
+				sParams[3], 
+				(iNumParams==5) ? sParams[4] : RString(""),
+				*pNewNotes,
+				sPath
+				);
+			if( pNewNotes->m_StepsType != StepsType_Invalid )
+			{
+				pNewNotes->SetFilename( sPath );
+				out.AddSteps( pNewNotes );
+			}
+			else
+				delete pNewNotes;
+		}
+		else if( sValueName.EqualsNoCase("DISPLAYTITLE") ||
+			sValueName.EqualsNoCase("DISPLAYARTIST") )
+		{
+			/* We don't want to support these tags.  However, we don't want
+			 * to pick up images used here as song images (eg. banners). */
+			RString param = sParams[1];
+			/* "{foo} ... {foo2}" */
+			size_t pos = 0;
+			while( pos < RString::npos )
+			{
+
+				size_t startpos = param.find('{', pos);
+				if( startpos == RString::npos )
+					break;
+				size_t endpos = param.find('}', startpos);
+				if( endpos == RString::npos )
+					break;
+
+				RString sub = param.substr( startpos+1, endpos-startpos-1 );
+
+				pos = endpos + 1;
+
+				sub.MakeLower();
+			}
+		}
+		else
+		{
+			// do nothing.  We don't care about this value name
+		}
+	}
+
+	return true;
+}
 
 /*
  * (c) 2001-2004 Chris Danford, Glenn Maynard

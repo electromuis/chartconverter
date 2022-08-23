@@ -11,6 +11,8 @@ namespace JsonUtil
 	bool LoadFromString( Json::Value &root, RString sData, RString &sErrorOut );
 	bool LoadFromStringShowErrors(Json::Value &root, const RString sData);
 
+	bool LoadFromFileShowErrors(Json::Value &root, RageFile &f);
+
 	bool WriteFile(const Json::Value &root, RageFile& f, bool bMinified);
 
 	std::vector<RString> DeserializeArrayStrings(const Json::Value &array);

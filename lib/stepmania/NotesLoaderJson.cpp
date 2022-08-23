@@ -4,7 +4,6 @@
 #include "TimingData.h"
 #include "RageUtil.h"
 #include "JsonUtil.h"
-#include "BackgroundUtil.h"
 #include "NoteData.h"
 #include "Song.h"
 #include "Steps.h"
@@ -57,29 +56,6 @@ static void Deserialize(TimingData &td, const Json::Value &root)
 		td.AddSegment( *vStops[i] );
 		delete vStops[i];
 	}
-}
-
-static void Deserialize(LyricSegment &o, const Json::Value &root)
-{
-	o.m_fStartTime = (float)root["StartTime"].asDouble();
-	o.m_sLyric = root["Lyric"].asString();
-	o.m_Color.FromString( root["Color"].asString() );
-}
-
-static void Deserialize(BackgroundDef &o, const Json::Value &root)
-{
-	o.m_sEffect = root["Effect"].asString();
-	o.m_sFile1 = root["File1"].asString();
-	o.m_sFile2 = root["File2"].asString();
-	o.m_sColor1 = root["Color1"].asString();
-}
-
-static void Deserialize(BackgroundChange &o, const Json::Value &root )
-{
-	Deserialize( o.m_def, root["Def"] );
-	o.m_fStartBeat = (float)root["StartBeat"].asDouble();
-	o.m_fRate = (float)root["Rate"].asDouble();
-	o.m_sTransition = root["Transition"].asString();
 }
 
 static void Deserialize( TapNote &o, const Json::Value &root )
@@ -162,7 +138,6 @@ static void Deserialize( Song &out, const Json::Value &root )
 	out.m_sCredit = root["Credit"].asString();
 	out.m_sBannerFile = root["Banner"].asString();
 	out.m_sBackgroundFile = root["Background"].asString();
-	out.m_sLyricsFile = root["LyricsFile"].asString();
 	out.m_sCDTitleFile = root["CDTitle"].asString();
 	out.m_sMusicFile = root["Music"].asString();
 	out.m_SongTiming.m_fBeat0OffsetInSeconds = (float)root["Offset"].asDouble();
@@ -192,25 +167,7 @@ static void Deserialize( Song &out, const Json::Value &root )
 	}
 
 	Deserialize( out.m_SongTiming, root["TimingData"] );
-	JsonUtil::DeserializeVectorObjects( out.m_LyricSegments, Deserialize, root["LyricSegments"] );
-
-	{
-		const Json::Value &root2 = root["BackgroundChanges"];
-		FOREACH_BackgroundLayer( bl )
-		{
-			const Json::Value &root3 = root2[bl];
-			vector<BackgroundChange> &vBgc = out.GetBackgroundChanges(bl);
-			JsonUtil::DeserializeVectorObjects( vBgc, Deserialize, root3 );
-		}
-	}
-
-	{
-		vector<BackgroundChange> &vBgc = out.GetForegroundChanges();
-		JsonUtil::DeserializeVectorObjects( vBgc, Deserialize, root["ForegroundChanges"] );
-	}
-
-	out.m_vsKeysoundFile = JsonUtil::DeserializeArrayStrings(root["KeySounds"]);
-
+	
 	{
 		vector<Steps*> vpSteps;
 		JsonUtil::DeserializeVectorPointersParam<Steps,Song*>( vpSteps, Deserialize, root["Charts"], &out );
@@ -219,10 +176,10 @@ static void Deserialize( Song &out, const Json::Value &root )
 	}
 }
 
-bool NotesLoaderJson::LoadFromJsonFile( const RString &sPath, Song &out )
+bool NotesLoaderJson::LoadFromSimfile( RageFile& f, Song &out )
 {
 	Json::Value root;
-	if( !JsonUtil::LoadFromFileShowErrors(root,sPath) )
+	if( !JsonUtil::LoadFromFileShowErrors(root,f) )
 		return false;
 
 	Deserialize(out, root);

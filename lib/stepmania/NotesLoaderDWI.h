@@ -4,15 +4,16 @@
 #define NOTES_LOADER_DWI_H
 
 #include <set>
+#include "NotesLoader.h"
 
 class Song;
 class Steps;
+class RageFile;
 
-/** @brief The DWILoader handles parsing the .dwi file. */
-namespace DWILoader
+struct NotesLoaderDWI : public NotesLoaderBase
 {
-
-}
+	virtual bool LoadFromSimfile(RageFile& f, Song &out );
+};
 
 #endif
 

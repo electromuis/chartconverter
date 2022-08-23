@@ -2,29 +2,55 @@
 #include <cerrno>
 #include <cstring>
 #include "NotesWriterSM.h"
-#include "BackgroundUtil.h"
 #include "GameManager.h"
-#include "LocalizedString.h"
 #include "NoteTypes.h"
-#include "Profile.h"
-#include "ProfileManager.h"
 #include "RageFile.h"
-#include "RageFileManager.h"
 #include "RageLog.h"
 #include "RageUtil.h"
 #include "Song.h"
 #include "Steps.h"
-#include "ThemeMetric.h"
 
-ThemeMetric<bool> USE_CREDIT	( "NotesWriterSM", "DescriptionUsesCreditField" );
+RString SmEscape( const RString &sUnescaped )
+{
+	return SmEscape( sUnescaped.c_str(), sUnescaped.size() );
+}
+
+RString SmEscape( const char *cUnescaped, int len )
+{
+	RString answer = "";
+	for( int i = 0; i < len; ++i )
+	{
+		// Other characters we could theoretically escape:
+		// NotesWriterSM.cpp used to claim ',' should be escaped, but there was no explanation why
+		// '#' is both a control character and a valid part of a parameter.  The only way for there to be
+		//   any confusion is in a misformatted .sm file, though, so it is unnecessary to escape it.
+		if( cUnescaped[i] == '/' && i + 1 < len && cUnescaped[i + 1] == '/' )
+		{
+			answer += "\\/\\/";
+			++i; // increment here so we skip both //s
+			continue;
+		}
+		if( cUnescaped[i] == '\\' || cUnescaped[i] == ':' || cUnescaped[i] == ';' )
+		    answer += "\\";
+		answer += cUnescaped[i];
+	}
+	return answer;
+}
+
+bool NotesWriterSM::Write( RageFile& f, const Song &out )
+{
+	vector<Steps*> steps = out.GetAllSteps();
+
+	return Write(f, out, steps);
+}
 
 /**
  * @brief Write out the common tags for .SM files.
  * @param f the file in question.
  * @param out the Song in question. */
-static void WriteGlobalTags( RageFileBasic &f, Song &out )
+static void WriteGlobalTags( RageFile &f, const Song &out )
 {
-	TimingData &timing = out.m_SongTiming;
+	const TimingData &timing = out.m_SongTiming;
 	f.PutLine( ssprintf( "#TITLE:%s;", SmEscape(out.m_sMainTitle).c_str() ) );
 	f.PutLine( ssprintf( "#SUBTITLE:%s;", SmEscape(out.m_sSubTitle).c_str() ) );
 	f.PutLine( ssprintf( "#ARTIST:%s;", SmEscape(out.m_sArtist).c_str() ) );
@@ -35,7 +61,6 @@ static void WriteGlobalTags( RageFileBasic &f, Song &out )
 	f.PutLine( ssprintf( "#CREDIT:%s;", SmEscape(out.m_sCredit).c_str() ) );
 	f.PutLine( ssprintf( "#BANNER:%s;", SmEscape(out.m_sBannerFile).c_str() ) );
 	f.PutLine( ssprintf( "#BACKGROUND:%s;", SmEscape(out.m_sBackgroundFile).c_str() ) );
-	f.PutLine( ssprintf( "#LYRICSPATH:%s;", SmEscape(out.m_sLyricsFile).c_str() ) );
 	f.PutLine( ssprintf( "#CDTITLE:%s;", SmEscape(out.m_sCDTitleFile).c_str() ) );
 	f.PutLine( ssprintf( "#MUSIC:%s;", SmEscape(out.m_sMusicFile).c_str() ) );
 	f.PutLine( ssprintf( "#OFFSET:%.6f;", out.m_SongTiming.m_fBeat0OffsetInSeconds ) );
@@ -146,48 +171,6 @@ static void WriteGlobalTags( RageFileBasic &f, Song &out )
 	f.PutLine(join(",\n", stopLines));
 
 	f.PutLine( ";" );
-
-	FOREACH_BackgroundLayer( b )
-	{
-		if( b==0 )
-			f.Write( "#BGCHANGES:" );
-		else if( out.GetBackgroundChanges(b).empty() )
-			continue;	// skip
-		else
-			f.Write( ssprintf("#BGCHANGES%d:", b+1) );
-
-		for (BackgroundChange const &bgc : out.GetBackgroundChanges(b))
-			f.PutLine( bgc.ToString() +"," );
-
-		/* If there's an animation plan at all, add a dummy "-nosongbg-" tag to indicate that
-		 * this file doesn't want a song BG entry added at the end.  See SMLoader::TidyUpData.
-		 * This tag will be removed on load.  Add it at a very high beat, so it won't cause
-		 * problems if loaded in older versions. */
-		if( b==0 && !out.GetBackgroundChanges(b).empty() )
-			f.PutLine( "99999=-nosongbg-=1.000=0=0=0 // don't automatically add -songbackground-" );
-		f.PutLine( ";" );
-	}
-
-	if( out.GetForegroundChanges().size() )
-	{
-		f.Write( "#FGCHANGES:" );
-		for (BackgroundChange const &bgc : out.GetForegroundChanges())
-		{
-			f.PutLine( bgc.ToString() +"," );
-		}
-		f.PutLine( ";" );
-	}
-
-	f.Write( "#KEYSOUNDS:" );
-	for( unsigned i=0; i<out.m_vsKeysoundFile.size(); i++ )
-	{
-		f.Write( out.m_vsKeysoundFile[i] );
-		if( i != out.m_vsKeysoundFile.size()-1 )
-			f.Write( "," );
-	}
-	f.PutLine( ";" );
-
-	f.PutLine( ssprintf("#ATTACKS:%s;", out.GetAttackString().c_str()) );
 }
 
 /**
@@ -222,7 +205,7 @@ static RString GetSMNotesTag( const Song &song, const Steps &in )
 							  in.m_StepsTypeStr.c_str(), SmEscape(in.GetDescription()).c_str()) );
 	lines.push_back( song.m_vsKeysoundFile.empty() ? "#NOTES:" : "#NOTES2:" );
 	lines.push_back( ssprintf( "     %s:", in.m_StepsTypeStr.c_str() ) );
-	RString desc = (USE_CREDIT ? in.GetCredit() : in.GetChartName());
+	RString desc = in.GetChartName();
 	lines.push_back( ssprintf( "     %s:", SmEscape(desc).c_str() ) );
 	lines.push_back( ssprintf( "     %s:", DifficultyToString(in.GetDifficulty()).c_str() ) );
 	lines.push_back( ssprintf( "     %d:", in.GetMeter() ) );
@@ -251,23 +234,7 @@ static RString GetSMNotesTag( const Song &song, const Steps &in )
 	return JoinLineList( lines );
 }
 
-bool NotesWriterSM::Write( RString sPath, Song &out, const vector<Steps*>& vpStepsToSave )
-{
-	int flags = RageFile::WRITE;
-
-	flags |= RageFile::SLOW_FLUSH;
-
-	RageFile f;
-	if( !f.Open( sPath, flags ) )
-	{
-		LOG->UserLog( "Song file", sPath, "couldn't be opened for writing: %s", f.GetError().c_str() );
-		return false;
-	}
-
-	return Write( f, out, vpStepsToSave );
-}
-
-bool NotesWriterSM::Write( RageFileBasic &f, Song &out, const vector<Steps*>& vpStepsToSave )
+bool NotesWriterSM::Write( RageFile &f, const Song &out, const vector<Steps*>& vpStepsToSave )
 {
 	WriteGlobalTags( f, out );
 
@@ -278,80 +245,6 @@ bool NotesWriterSM::Write( RageFileBasic &f, Song &out, const vector<Steps*>& vp
 	}
 	if( f.Flush() == -1 )
 		return false;
-
-	return true;
-}
-
-void NotesWriterSM::GetEditFileContents( const Song *pSong, const Steps *pSteps, RString &sOut )
-{
-	sOut = "";
-	RString sDir = pSong->GetSongDir();
-
-	// "Songs/foo/bar"; strip off "Songs/".
-	vector<RString> asParts;
-	split( sDir, "/", asParts );
-	if( asParts.size() )
-		sDir = join( "/", asParts.begin()+1, asParts.end() );
-	sOut += ssprintf( "#SONG:%s;\r\n", sDir.c_str() );
-	sOut += GetSMNotesTag( *pSong, *pSteps );
-}
-
-RString NotesWriterSM::GetEditFileName( const Song *pSong, const Steps *pSteps )
-{
-	/* Try to make a unique name. This isn't guaranteed. Edit descriptions are
-	 * case-sensitive, filenames on disk are usually not, and we decimate certain
-	 * characters for FAT filesystems. */
-	RString sFile = pSong->GetTranslitFullTitle() + " - " + pSteps->GetDescription();
-
-	// HACK:
-	if( pSteps->m_StepsType == StepsType_dance_double )
-		sFile += " (doubles)";
-
-	sFile += ".edit";
-
-	MakeValidFilename( sFile );
-	return sFile;
-}
-
-static LocalizedString DESTINATION_ALREADY_EXISTS	("NotesWriterSM", "Error renaming file.  Destination file '%s' already exists.");
-static LocalizedString ERROR_WRITING_FILE		("NotesWriterSM", "Error writing file '%s'.");
-bool NotesWriterSM::WriteEditFileToMachine( const Song *pSong, Steps *pSteps, RString &sErrorOut )
-{
-	RString sDir = PROFILEMAN->GetProfileDir( ProfileSlot_Machine ) + EDIT_STEPS_SUBDIR;
-
-	RString sPath = sDir + GetEditFileName(pSong,pSteps);
-
-	// Check to make sure that we're not clobering an existing file before opening.
-	bool bFileNameChanging =
-			pSteps->GetSavedToDisk()  &&
-			pSteps->GetFilename() != sPath;
-	if( bFileNameChanging  &&  DoesFileExist(sPath) )
-	{
-		sErrorOut = ssprintf( DESTINATION_ALREADY_EXISTS.GetValue(), sPath.c_str() );
-		return false;
-	}
-
-	RageFile f;
-	if( !f.Open(sPath, RageFile::WRITE | RageFile::SLOW_FLUSH) )
-	{
-		sErrorOut = ssprintf( ERROR_WRITING_FILE.GetValue(), sPath.c_str() );
-		return false;
-	}
-
-	RString sTag;
-	GetEditFileContents( pSong, pSteps, sTag );
-	if( f.PutLine(sTag) == -1 || f.Flush() == -1 )
-	{
-		sErrorOut = ssprintf( ERROR_WRITING_FILE.GetValue(), sPath.c_str() );
-		return false;
-	}
-
-	/* If the file name of the edit has changed since the last save, then delete the old
-	 * file after saving the new one. If we delete it first, then we'll lose data on error. */
-
-	if( bFileNameChanging )
-		FILEMAN->Remove( pSteps->GetFilename() );
-	pSteps->SetFilename( sPath );
 
 	return true;
 }

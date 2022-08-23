@@ -9,6 +9,7 @@ class MsdFile;
 class Song;
 class Steps;
 class TimingData;
+class RageFile;
 
 /**
  * @brief The various states while parsing a .ssc file.
@@ -49,7 +50,14 @@ struct SSCLoader : public SMLoader
 	 * @param bFromCache a check to see if we are getting certain information from the cache file.
 	 * @return its success or failure.
 	 */
-	virtual bool LoadFromSimfile( const RString &sPath, Song &out, bool bFromCache = false );
+	virtual bool LoadFromSimfile(RageFile& f, Song &out );
+
+	/**
+	 * @brief Retrieve the specific NoteData from the file.
+	 * @param cachePath the path to the cache file.
+	 * @param out the Steps to receive just the particular notedata.
+	 * @return true if successful, false otherwise. */
+	virtual bool LoadNoteDataFromSimfile( RageFile& f, Steps &out );
 	
 	/**
 	 * @brief Attempt to load an edit from the hard drive.
@@ -68,13 +76,6 @@ struct SSCLoader : public SMLoader
 	 * @return its success or failure.
 	 */
 	bool LoadEditFromMsd( const MsdFile &msd, const RString &sEditFilePath, bool bAddStepsToSong, Song *givenSong=nullptr );
-	
-	/**
-	 * @brief Retrieve the specific NoteData from the file.
-	 * @param cachePath the path to the cache file.
-	 * @param out the Steps to receive just the particular notedata.
-	 * @return true if successful, false otherwise. */
-	virtual bool LoadNoteDataFromSimfile( const RString &cachePath, Steps &out );
 	
 	void ProcessBPMs( TimingData &, const RString );
 	void ProcessStops( TimingData &, const RString );

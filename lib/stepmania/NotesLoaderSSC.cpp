@@ -8,6 +8,7 @@
 #include "RageUtil.h"
 #include "Song.h"
 #include "Steps.h"
+#include "RageFile.h"
 
 // Everything from this line to the creation of parser_helper exists to
 // speed up parsing by allowing the use of std::map.  All these functions
@@ -26,9 +27,9 @@ struct StepsTagInfo
 	bool ssc_format;
 	bool from_cache;
 	bool for_load_edit;
-	StepsTagInfo(SSCLoader* l, Song* s, const RString& p, bool fc)
+	StepsTagInfo(SSCLoader* l, Song* s, const RString& p)
 		:loader(l), song(s), path(p), has_own_timing(false), ssc_format(false),
-		 from_cache(fc), for_load_edit(false)
+		 from_cache(false), for_load_edit(false)
 	{}
 };
 struct SongTagInfo
@@ -38,8 +39,8 @@ struct SongTagInfo
 	const MsdFile::value_t* params;
 	const RString& path;
 	bool from_cache;
-	SongTagInfo(SSCLoader* l, Song* s, const RString& p, bool fc)
-		:loader(l), song(s), path(p), from_cache(fc)
+	SongTagInfo(SSCLoader* l, Song* s, const RString& p)
+		:loader(l), song(s), path(p), from_cache(false)
 	{}
 };
 // LoadNoteDataFromSimfile uses LoadNoteDataTagIDs because its parts operate
@@ -774,12 +775,16 @@ void SSCLoader::ProcessScrolls( TimingData &out, const RString sParam )
 	}
 }
 
-bool SSCLoader::LoadNoteDataFromSimfile( const RString & cachePath, Steps &out )
+bool SSCLoader::LoadNoteDataFromSimfile( RageFile& f, Steps &out )
 {
-	LOG->Trace( "Loading notes from %s", cachePath.c_str() );
-	
+	RString cachePath = f.GetPath();
+
 	MsdFile msd;
-	return false;
+	if( !msd.ReadFile( f, false ) )  // don't unescape
+	{
+		LOG->UserLog( "Song file", cachePath, "couldn't be opened: %s", msd.GetError().c_str() );
+		return false;
+	}
 	
 	bool tryingSteps = false;
 	float storedVersion = 0;
@@ -829,8 +834,7 @@ bool SSCLoader::LoadNoteDataFromSimfile( const RString & cachePath, Steps &out )
 						// forces edits onto Edit difficulty even if they have a difficulty
 						// tag. -Kyz
 						if(out.GetDifficulty() != StringToDifficulty(matcher) &&
-							!(out.GetDifficulty() == Difficulty_Edit &&
-								GetExtension(cachePath).MakeLower() == "edit"))
+							!(out.GetDifficulty() == Difficulty_Edit))
 						{ tryingSteps = false; }
 						break;
 					case LNDID_meter:
@@ -875,12 +879,16 @@ bool SSCLoader::LoadNoteDataFromSimfile( const RString & cachePath, Steps &out )
 	return false;
 }
 
-bool SSCLoader::LoadFromSimfile( const RString &sPath, Song &out, bool bFromCache )
+bool SSCLoader::LoadFromSimfile( RageFile& f, Song &out )
 {
-	//LOG->Trace( "Song::LoadFromSSCFile(%s)", sPath.c_str() );
+	RString sPath = f.GetPath();
 
 	MsdFile msd;
-	return false;
+	if( !msd.ReadFile( f, false ) )  // don't unescape
+	{
+		LOG->UserLog( "Song file", sPath, "couldn't be opened: %s", msd.GetError().c_str() );
+		return false;
+	}
 
 	out.m_SongTiming.m_sFile = sPath; // songs still have their fallback timing.
 	out.m_sSongFileName = sPath;
@@ -890,8 +898,8 @@ bool SSCLoader::LoadFromSimfile( const RString &sPath, Song &out, bool bFromCach
 	Steps* pNewNotes = nullptr;
 	TimingData stepsTiming;
 
-	SongTagInfo reused_song_info(&*this, &out, sPath, bFromCache);
-	StepsTagInfo reused_steps_info(&*this, &out, sPath, bFromCache);
+	SongTagInfo reused_song_info(&*this, &out, sPath);
+	StepsTagInfo reused_steps_info(&*this, &out, sPath);
 
 	for( unsigned i = 0; i < values; i++ )
 	{
@@ -976,7 +984,7 @@ bool SSCLoader::LoadEditFromMsd(const MsdFile &msd,
 	Steps* pNewNotes = nullptr;
 	TimingData stepsTiming;
 
-	StepsTagInfo reused_steps_info(&*this, pSong, sEditFilePath, false);
+	StepsTagInfo reused_steps_info(&*this, pSong, sEditFilePath);
 	reused_steps_info.for_load_edit= true;
 	reused_steps_info.timing= &stepsTiming;
 

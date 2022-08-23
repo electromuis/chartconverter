@@ -2,18 +2,20 @@
 #include <cerrno>
 #include <cstring>
 #include "NotesWriterSSC.h"
-#include "BackgroundUtil.h"
 #include "GameManager.h"
-#include "LocalizedString.h"
 #include "NoteTypes.h"
-#include "Profile.h"
-#include "ProfileManager.h"
 #include "RageFile.h"
-#include "RageFileManager.h"
 #include "RageLog.h"
 #include "RageUtil.h"
 #include "Song.h"
 #include "Steps.h"
+
+bool NotesWriterSSC::Write( RageFile& f, const Song &out )
+{
+	vector<Steps*> steps = out.GetAllSteps();
+
+	return Write(f, out, steps);
+}
 
 /**
  * @brief Turn a vector of lines into a single line joined by newline characters.
@@ -226,7 +228,6 @@ static void WriteGlobalTags( RageFile &f, const Song &out )
 	f.PutLine( ssprintf( "#JACKET:%s;", SmEscape(out.m_sJacketFile).c_str() ) );
 	f.PutLine( ssprintf( "#CDIMAGE:%s;", SmEscape(out.m_sCDFile).c_str() ) );
 	f.PutLine( ssprintf( "#DISCIMAGE:%s;", SmEscape(out.m_sDiscFile).c_str() ) );
-	f.PutLine( ssprintf( "#LYRICSPATH:%s;", SmEscape(out.m_sLyricsFile).c_str() ) );
 	f.PutLine( ssprintf( "#CDTITLE:%s;", SmEscape(out.m_sCDTitleFile).c_str() ) );
 	f.PutLine( ssprintf( "#MUSIC:%s;", SmEscape(out.m_sMusicFile).c_str() ) );
 	if(!out.m_PreviewFile.empty())
@@ -234,14 +235,6 @@ static void WriteGlobalTags( RageFile &f, const Song &out )
 		f.PutLine(ssprintf("#PREVIEW:%s;", SmEscape(out.m_PreviewFile).c_str()));
 	}
 
-	{
-		vector<RString> vs = out.GetInstrumentTracksToVectorString();
-		if( !vs.empty() )
-		{
-			RString s = join( ",", vs );
-			f.PutLine( "#INSTRUMENTTRACK:" + s + ";\n" );
-		}
-	}
 	f.PutLine( ssprintf( "#OFFSET:%.6f;", out.m_SongTiming.m_fBeat0OffsetInSeconds ) );
 	f.PutLine( ssprintf( "#SAMPLESTART:%.6f;", out.m_fMusicSampleStartSeconds ) );
 	f.PutLine( ssprintf( "#SAMPLELENGTH:%.6f;", out.m_fMusicSampleLengthSeconds ) );
@@ -279,64 +272,6 @@ static void WriteGlobalTags( RageFile &f, const Song &out )
 	if( out.GetSpecifiedLastSecond() > 0 )
 		f.PutLine( ssprintf("#LASTSECONDHINT:%.6f;", out.GetSpecifiedLastSecond()) );
 
-	FOREACH_BackgroundLayer( b )
-	{
-		if( b==0 )
-			f.Write( "#BGCHANGES:" );
-		else if( out.GetBackgroundChanges(b).empty() )
-			continue;	// skip
-		else
-			f.Write( ssprintf("#BGCHANGES%d:", b+1) );
-
-		for (BackgroundChange const &bgc : out.GetBackgroundChanges(b))
-			f.PutLine( bgc.ToString() +"," );
-
-		/* If there's an animation plan at all, add a dummy "-nosongbg-" tag to
-		 * indicate that this file doesn't want a song BG entry added at the end.
-		 * See SSCLoader::TidyUpData. This tag will be removed on load. Add it
-		 * at a very high beat, so it won't cause problems if loaded in older versions. */
-		if( b==0 && !out.GetBackgroundChanges(b).empty() )
-			f.PutLine( "99999=-nosongbg-=1.000=0=0=0 // don't automatically add -songbackground-" );
-		f.PutLine( ";" );
-	}
-
-	if( out.GetForegroundChanges().size() )
-	{
-		f.Write( "#FGCHANGES:" );
-		for (BackgroundChange const &bgc : out.GetForegroundChanges())
-		{
-			f.PutLine( bgc.ToString() +"," );
-		}
-		f.PutLine( ";" );
-	}
-
-	f.Write( "#KEYSOUNDS:" );
-	for( unsigned i=0; i<out.m_vsKeysoundFile.size(); i++ )
-	{
-		// some keysound files has the first sound that starts with #,
-		// which makes MsdFile fail parsing the whole declaration.
-		// in this case, add a backslash at the front
-		// (#KEYSOUNDS:\#bgm.wav,01.wav,02.wav,..) and handle that on load.
-		if( i == 0 && out.m_vsKeysoundFile[i].size() > 0 && out.m_vsKeysoundFile[i][0] == '#' )
-			f.Write("\\");
-		f.Write( out.m_vsKeysoundFile[i] );
-		if( i != out.m_vsKeysoundFile.size()-1 )
-			f.Write( "," );
-	}
-	f.PutLine( ";" );
-
-	// attacks section
-	//f.PutLine( ssprintf("#ATTACKS:%s;", out.GetAttackString().c_str()) );
-	f.PutLine( "#ATTACKS:" );
-	for(unsigned j = 0; j < out.m_Attacks.size(); j++)
-	{
-		const Attack &a = out.m_Attacks[j];
-		f.Write( ssprintf( "  TIME=%.2f:LEN=%.2f:MODS=%s",
-			a.fStartSecond, a.fSecsRemaining, a.sModifiers.c_str() ) );
-
-		if( j+1 < out.m_Attacks.size() )
-			f.Write( ":" );
-	}
 	f.Write( ";" );
 	f.PutLine("");
 }
@@ -431,119 +366,25 @@ static RString GetSSCNoteData( const Song &song, const Steps &in, bool bSavingCa
 	return JoinLineList( lines );
 }
 
-bool NotesWriterSSC::Write( RString sPath, const Song &out, const vector<Steps*>& vpStepsToSave, bool bSavingCache )
+bool NotesWriterSSC::Write( RageFile& f, const Song &out, const vector<Steps*>& vpStepsToSave )
 {
-	int flags = RageFile::WRITE;
-
-	/* If we're not saving cache, we're saving real data, so enable SLOW_FLUSH
-	 * to prevent data loss. If we're saving cache, this will slow things down
-	 * too much. */
-	if( !bSavingCache )
-		flags |= RageFile::SLOW_FLUSH;
-
-	RageFile f;
-	if( !f.Open( sPath, flags ) )
-	{
-		LOG->UserLog( "Song file", sPath, "couldn't be opened for writing: %s", f.GetError().c_str() );
-		return false;
-	}
-
 	WriteGlobalTags( f, out );
 	
-	if( bSavingCache )
-	{
-		f.PutLine( ssprintf( "// cache tags:" ) );
-		f.PutLine( ssprintf( "#FIRSTSECOND:%.6f;", out.GetFirstSecond() ) );
-		f.PutLine( ssprintf( "#LASTSECOND:%.6f;", out.GetLastSecond() ) );
-		f.PutLine( ssprintf( "#SONGFILENAME:%s;", out.m_sSongFileName.c_str() ) );
-		f.PutLine( ssprintf( "#HASMUSIC:%i;", out.m_bHasMusic ) );
-		f.PutLine( ssprintf( "#HASBANNER:%i;", out.m_bHasBanner ) );
-		f.PutLine( ssprintf( "#MUSICLENGTH:%.6f;", out.m_fMusicLengthSeconds ) );
-		f.PutLine( ssprintf( "// end cache tags" ) );
-	}
+	f.PutLine( ssprintf( "#FIRSTSECOND:%.6f;", out.GetFirstSecond() ) );
+	f.PutLine( ssprintf( "#LASTSECOND:%.6f;", out.GetLastSecond() ) );
+	f.PutLine( ssprintf( "#SONGFILENAME:%s;", out.m_sSongFileName.c_str() ) );
+	f.PutLine( ssprintf( "#HASMUSIC:%i;", out.m_bHasMusic ) );
+	f.PutLine( ssprintf( "#HASBANNER:%i;", out.m_bHasBanner ) );
+	f.PutLine( ssprintf( "#MUSICLENGTH:%.6f;", out.m_fMusicLengthSeconds ) );
 
 	// Save specified Steps to this file
 	for (Steps const *pSteps : vpStepsToSave)
 	{
-		RString sTag = GetSSCNoteData( out, *pSteps, bSavingCache );
+		RString sTag = GetSSCNoteData( out, *pSteps, true );
 		f.PutLine( sTag );
 	}
 	if( f.Flush() == -1 )
 		return false;
-
-	return true;
-}
-
-void NotesWriterSSC::GetEditFileContents( const Song *pSong, const Steps *pSteps, RString &sOut )
-{
-	sOut = "";
-	RString sDir = pSong->GetSongDir();
-
-	// "Songs/foo/bar"; strip off "Songs/".
-	vector<RString> asParts;
-	split( sDir, "/", asParts );
-	if( asParts.size() )
-		sDir = join( "/", asParts.begin()+1, asParts.end() );
-	sOut += ssprintf( "#SONG:%s;\r\n", sDir.c_str() );
-	sOut += GetSSCNoteData( *pSong, *pSteps, false );
-}
-
-RString NotesWriterSSC::GetEditFileName( const Song *pSong, const Steps *pSteps )
-{
-	/* Try to make a unique name. This isn't guaranteed. Edit descriptions are
-	 * case-sensitive, filenames on disk are usually not, and we decimate certain
-	 * characters for FAT filesystems. */
-	RString sFile = pSong->GetTranslitFullTitle() + " - " + pSteps->GetDescription();
-
-	// HACK:
-	if( pSteps->m_StepsType == StepsType_dance_double )
-		sFile += " (doubles)";
-
-	sFile += ".edit";
-
-	MakeValidFilename( sFile );
-	return sFile;
-}
-
-static LocalizedString DESTINATION_ALREADY_EXISTS	("NotesWriterSSC", "Error renaming file.  Destination file '%s' already exists.");
-static LocalizedString ERROR_WRITING_FILE		("NotesWriterSSC", "Error writing file '%s'.");
-bool NotesWriterSSC::WriteEditFileToMachine( const Song *pSong, Steps *pSteps, RString &sErrorOut )
-{
-	RString sDir = PROFILEMAN->GetProfileDir( ProfileSlot_Machine ) + EDIT_STEPS_SUBDIR;
-
-	RString sPath = sDir + GetEditFileName(pSong,pSteps);
-
-	// Check to make sure that we're not clobering an existing file before opening.
-	bool bFileNameChanging = 
-		pSteps->GetSavedToDisk()  && 
-		pSteps->GetFilename() != sPath;
-	if( bFileNameChanging  &&  DoesFileExist(sPath) )
-	{
-		sErrorOut = ssprintf( DESTINATION_ALREADY_EXISTS.GetValue(), sPath.c_str() );
-		return false;
-	}
-
-	RageFile f;
-	if( !f.Open(sPath, RageFile::WRITE | RageFile::SLOW_FLUSH) )
-	{
-		sErrorOut = ssprintf( ERROR_WRITING_FILE.GetValue(), sPath.c_str() );
-		return false;
-	}
-
-	RString sTag;
-	GetEditFileContents( pSong, pSteps, sTag );
-	if( f.PutLine(sTag) == -1 || f.Flush() == -1 )
-	{
-		sErrorOut = ssprintf( ERROR_WRITING_FILE.GetValue(), sPath.c_str() );
-		return false;
-	}
-
-	/* If the file name of the edit has changed since the last save, then delete the old
-	 * file after saving the new one. If we delete it first, then we'll lose data on error. */
-
-	if( bFileNameChanging )
-		FILEMAN->Remove( pSteps->GetFilename() );
-	pSteps->SetFilename( sPath );
 
 	return true;
 }

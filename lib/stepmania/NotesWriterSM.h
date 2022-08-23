@@ -1,19 +1,23 @@
 #ifndef NOTES_WRITER_SM_H
 #define NOTES_WRITER_SM_H
 
+#include "NotesLoader.h"
+
 class Song;
 class Steps;
 class RageFileBasic;
+
 /** @brief Writes a Song to an .SM file. */
-namespace NotesWriterSM
+struct NotesWriterSM : public NotesWriterBase
 {
+	bool Write( RageFile& f, const Song &out );
+
 	/**
 	 * @brief Write the song out to a file.
 	 * @param sPath the path to write the file.
 	 * @param out the Song to be written out.
 	 * @return its success or failure. */
-	bool Write( RageFileBasic &file, Song &out, const vector<Steps*>& vpStepsToSave );
-	bool Write( RString sPath, Song &out, const vector<Steps*>& vpStepsToSave );
+	bool Write( RageFile &file, const Song &out, const vector<Steps*>& vpStepsToSave );
 	/**
 	 * @brief Get some contents about the edit file first.
 	 * @param pSong the Song in question.
@@ -34,7 +38,7 @@ namespace NotesWriterSM
 	 * @param sErrorOut any error messages that may have occurred.
 	 * @return its success or failure. */
 	bool WriteEditFileToMachine( const Song *pSong, Steps *pSteps, RString &sErrorOut );
-}
+};
 
 #endif
 

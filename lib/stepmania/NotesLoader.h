@@ -4,6 +4,7 @@
 #include <set>
 
 class Song;
+class RageFile;
 
 /** @brief Base class for step file loaders. */
 namespace NotesLoader
@@ -16,6 +17,16 @@ namespace NotesLoader
 	void GetMainAndSubTitlesFromFullTitle( const RString &sFullTitle, 
 					      RString &sMainTitleOut, RString &sSubTitleOut );
 }
+
+struct NotesLoaderBase
+{
+	virtual bool LoadFromSimfile(RageFile& f, Song &out ) = 0;
+};
+
+struct NotesWriterBase
+{
+	virtual bool Write( RageFile& f, const Song &out ) = 0;
+};
 
 #endif
 

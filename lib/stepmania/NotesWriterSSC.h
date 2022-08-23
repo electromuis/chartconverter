@@ -1,11 +1,18 @@
 #ifndef NOTES_WRITER_SSC_H
 #define NOTES_WRITER_SSC_H
 
+#include <vector>
+#include "NotesLoader.h"
+
 class Song;
 class Steps;
+class RageFile;
+
 /** @brief Writes a Song to an .SSC file. */
-namespace NotesWriterSSC
+struct NotesWriterSSC : public NotesWriterBase
 {
+	bool Write( RageFile& f, const Song &out );
+
 	/**
 	 * @brief Write the song out to a file.
 	 * @param sPath the path to write the file.
@@ -13,28 +20,8 @@ namespace NotesWriterSSC
 	 * @param vpStepsToSave the Steps to save.
 	 * @param bSavingCache a flag to see if we're saving certain cache data.
 	 * @return its success or failure. */
-	bool Write( RString sPath, const Song &out, const vector<Steps*>& vpStepsToSave, bool bSavingCache );
-	/**
-	 * @brief Get some contents about the edit file first.
-	 * @param pSong the Song in question.
-	 * @param pSteps the Steps in question.
-	 * @param sOut the start of the file contents.
-	 */
-	void GetEditFileContents( const Song *pSong, const Steps *pSteps, RString &sOut );
-	/**
-	 * @brief Get the name of the edit file to use.
-	 * @param pSong the Song in question.
-	 * @param pSteps the Steps in question.
-	 * @return the name of the edit file. */
-	RString GetEditFileName( const Song *pSong, const Steps *pSteps );
-	/**
-	 * @brief Write the edit file to the machine for future use.
-	 * @param pSong the Song in question.
-	 * @param pSteps the Steps in question.
-	 * @param sErrorOut any error messages that may have occurred.
-	 * @return its success or failure. */
-	bool WriteEditFileToMachine( const Song *pSong, Steps *pSteps, RString &sErrorOut );
-}
+	bool Write( RageFile& f, const Song &out, const vector<Steps*>& vpStepsToSave );
+};
 
 #endif
 

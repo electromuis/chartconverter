@@ -14,7 +14,7 @@ struct SMALoader : public SMLoader
 {	
 	SMALoader() : SMLoader(".sma") {}
 	
-	virtual bool LoadFromSimfile( const RString &sPath, Song &out, bool bFromCache = false );
+	virtual bool LoadFromSimfile(RageFile& f, Song &out );
 
 	
 	void ProcessBeatsPerMeasure( TimingData &out, const RString sParam );

@@ -1,19 +1,16 @@
 #ifndef NOTES_WRITER_DWI_H
 #define NOTES_WRITER_DWI_H
 
+#include "NotesLoader.h"
+
 class Song;
 class RageFile;
 
 /** @brief Writes a Song to a .DWI file. */
-namespace NotesWriterDWI
+struct NotesWriterDWI : public NotesWriterBase
 {
-	/**
-	 * @brief Write the song out to a file.
-	 * @param sPath the path to write the file.
-	 * @param out the Song to be written out.
-	 * @return its success or failure. */
 	bool Write( RageFile& f, const Song &out );
-}
+};
 
 #endif
 

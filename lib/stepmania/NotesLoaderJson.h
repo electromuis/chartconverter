@@ -4,11 +4,13 @@
 #define NotesLoaderJson_H
 
 #include "NotesLoader.h"
-class Song;
 
-namespace NotesLoaderJson
+class Song;
+class RageFile;
+
+struct NotesLoaderJson : public NotesLoaderBase
 {
-	
+	virtual bool LoadFromSimfile(RageFile& f, Song &out );
 };
 
 #endif

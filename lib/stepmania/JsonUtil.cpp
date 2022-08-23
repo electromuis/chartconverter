@@ -28,6 +28,14 @@ bool JsonUtil::LoadFromStringShowErrors(Json::Value &root, RString sData)
 	return true;
 }
 
+bool JsonUtil::LoadFromFileShowErrors(Json::Value &root, RageFile &f)
+{
+	// Optimization opportunity: read this streaming instead of at once
+	RString sData;
+	f.Read(sData, f.GetFileSize());
+	return LoadFromStringShowErrors(root, sData);
+}
+
 std::vector<RString> JsonUtil::DeserializeArrayStrings(const Json::Value &value)
 {
 	std::vector<RString> values;

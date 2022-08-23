@@ -4,8 +4,6 @@
 #include "NotesLoaderSMA.h"
 #include "NotesLoaderSSC.h"
 #include "NotesLoaderDWI.h"
-#include "NotesLoaderBMS.h"
-#include "NotesLoaderKSF.h"
 #include "RageUtil.h"
 
 void NotesLoader::GetMainAndSubTitlesFromFullTitle( const RString &sFullTitle, RString &sMainTitleOut, RString &sSubTitleOut )

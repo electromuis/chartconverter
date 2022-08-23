@@ -49,14 +49,18 @@ set(SHARED_SOURCES
 	lib/stepmania/JsonUtil.cpp
 	
 	lib/stepmania/NotesLoader.cpp
+	lib/stepmania/NotesLoaderDWI.cpp
+	lib/stepmania/NotesLoaderJson.cpp
 	lib/stepmania/NotesLoaderSM.cpp
 	lib/stepmania/NotesLoaderSMA.cpp
 	lib/stepmania/NotesLoaderSSC.cpp
-	lib/stepmania/NotesLoaderDWI.cpp
-	lib/stepmania/NotesLoaderSM.cpp
 
-	lib/stepmania/NotesWriterJson.cpp
 	lib/stepmania/NotesWriterDWI.cpp
+	lib/stepmania/NotesWriterJson.cpp
+	lib/stepmania/NotesWriterSM.cpp
+	lib/stepmania/NotesWriterSSC.cpp
+	
+	
 )
 
 if (CMAKE_JS_VERSION)

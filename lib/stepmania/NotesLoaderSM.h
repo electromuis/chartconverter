@@ -1,6 +1,7 @@
 #ifndef NotesLoaderSM_H
 #define NotesLoaderSM_H
 
+#include "NotesLoader.h"
 #include "GameConstantsAndTypes.h"
 
 class Song;
@@ -18,7 +19,7 @@ const float FAST_BPM_WARP = 9999999.f;
 const int MAX_EDIT_STEPS_SIZE_BYTES		= 60*1024;	// 60KB
 
 /** @brief Reads a Song from an .SM file. */
-struct SMLoader
+struct SMLoader : public NotesLoaderBase
 {
 	SMLoader() : fileExt(".sm"), songTitle() {}
 	
@@ -26,21 +27,13 @@ struct SMLoader
 	
 	virtual ~SMLoader() {}
 
+	virtual bool LoadFromSimfile(RageFile& f, Song &out );
 
 	/**
 	 * @brief Retrieve the relevant notedata from the simfile.
 	 * @param path the path where the simfile lives.
 	 * @param out the Steps we are loading the data into. */
 	virtual bool LoadNoteDataFromSimfile(RageFile& f, Steps &out );
-	
-	/**
-	 * @brief Attempt to load the specified sm file.
-	 * @param sPath a const reference to the path on the hard drive to check.
-	 * @param out a reference to the Song that will retrieve the song information.
-	 * @param bFromCache a check to see if we are getting certain information from the cache file.
-	 * @return its success or failure.
-	 */
-	virtual bool LoadFromSimfile(RageFile& f, Song &out );
 	
 	/**
 	 * @brief Parse BPM Changes data from a string.

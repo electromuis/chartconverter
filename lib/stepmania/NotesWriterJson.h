@@ -3,12 +3,19 @@
 #ifndef NotesWriterJson_H
 #define NotesWriterJson_H
 
+#include "NotesLoader.h"
+
 class Song;
 class Steps;
 class RageFile;
 
-namespace NotesWriterJson
+struct NotesWriterJson : public NotesWriterBase
 {
+	bool Write( RageFile& f, const Song &out )
+	{
+		return WriteSong(f, out, true);
+	}
+
 	bool WriteSong( RageFile& f, const Song &out, bool bWriteSteps );
 	bool WriteSteps( RageFile& f, const Steps &out );
 };
