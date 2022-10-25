@@ -74,7 +74,7 @@ void RageLog::UserLog( const RString &sType, const RString &sElement, const char
 	if( !sType.empty() )
 		sBuf = ssprintf( "%s \"%s\" %s", sType.c_str(), sElement.c_str(), sBuf.c_str() );
 	
-	cout << sBuf << std::endl;
+	// cout << sBuf << std::endl;
 }
 
 #define NEWLINE "\n"

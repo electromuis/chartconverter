@@ -7,7 +7,27 @@
 #include "RageLog.h"
 #include "CryptHelpers.h"
 
-CryptManager*	CRYPTMAN	= nullptr;	// global and accessible from anywhere in our program
+CryptManager::CryptManager()
+{
+}
+
+CryptManager::~CryptManager()
+{
+}
+
+RString CryptManager::GetMD5ForString( RString sData )
+{
+	unsigned char digest[16];
+
+	int iHash = register_hash( &md5_desc );
+
+	hash_state hash;
+	hash_descriptor[iHash].init( &hash );
+	hash_descriptor[iHash].process( &hash, (const unsigned char *) sData.data(), sData.size() );
+	hash_descriptor[iHash].done( &hash, digest );
+
+	return RString( (const char *) digest, sizeof(digest) );
+}
 
 RString CryptManager::GetSHA1ForString( RString sData )
 {
@@ -22,6 +42,22 @@ RString CryptManager::GetSHA1ForString( RString sData )
 
 	return RString( (const char *) digest, sizeof(digest) );
 }
+
+RString CryptManager::GetSHA256ForString( RString sData )
+{
+	unsigned char digest[32];
+
+	int iHash = register_hash( &sha256_desc );
+
+	hash_state hash;
+	hash_descriptor[iHash].init( &hash );
+	hash_descriptor[iHash].process( &hash, (const unsigned char *) sData.data(), sData.size() );
+	hash_descriptor[iHash].done( &hash, digest );
+
+	return RString( (const char *) digest, sizeof(digest) );
+}
+
+
 
 
 /*

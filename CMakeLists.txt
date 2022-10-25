@@ -1,3 +1,5 @@
+cmake_minimum_required(VERSION 3.18)
+
 project(chartconverter)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} ${CMAKE_CURRENT_SOURCE_DIR}/Modules)
@@ -14,6 +16,8 @@ include_directories(
 )
 
 set(SHARED_SOURCES
+	StepmaniaJS.cpp
+
 	lib/jsoncpp/jsoncpp.cpp
 
 	lib/stepmania/RageFile.cpp
@@ -63,41 +67,36 @@ set(SHARED_SOURCES
 	
 )
 
-if (CMAKE_JS_VERSION)
-	add_library(chartconverterjs SHARED
-		${SHARED_SOURCES}
-		binding.cpp
-		${CMAKE_JS_SRC}
-	)
-
-	message("Tom: ${TOMCRYPT_LIBRARIES}")
-	set_target_properties(chartconverterjs PROPERTIES PREFIX "" SUFFIX ".node")
-	target_link_libraries(chartconverterjs PRIVATE ${CMAKE_JS_LIB} ${TOMCRYPT_LIBRARIES})
-
-	execute_process(COMMAND node -p "require('node-addon-api').include"
-		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-		OUTPUT_VARIABLE NODE_ADDON_API_DIR
-	)
-	# strip `"` and `\n` from the output above
-	string(REPLACE "\n" "" NODE_ADDON_API_DIR ${NODE_ADDON_API_DIR})
-	string(REPLACE "\"" "" NODE_ADDON_API_DIR ${NODE_ADDON_API_DIR})
-
-	add_compile_definitions(chartconverterjs PRIVATE
-		CMAKE_POWERED
-		HAVE_SNPRINTF
-	)
-
-	include_directories(${CMAKE_JS_INC} ${NODE_ADDON_API_DIR})
-else()
-	add_executable(chartconverter
-		${SHARED_SOURCES}
-		chartconverter.cpp
-	)
-
-	add_compile_definitions(chartconverter PRIVATE
-		CMAKE_POWERED
-		HAVE_SNPRINTF
-	)
-
-	target_link_libraries(chartconverter PUBLIC ${TOMCRYPT_LIBRARIES})
+if (NOT CMAKE_JS_VERSION)
+	error("JS libs not found")
 endif()
+
+add_library(StepmaniaJS SHARED
+	Bindings.cpp
+	
+	classes/SimfileLoader.cpp
+	classes/SongWrap.cpp
+	classes/StepsWrap.cpp
+
+	${CMAKE_JS_SRC}
+	${SHARED_SOURCES}
+)
+
+message("Tom: ${TOMCRYPT_LIBRARIES}")
+set_target_properties(StepmaniaJS PROPERTIES PREFIX "" SUFFIX ".node")
+target_link_libraries(StepmaniaJS PRIVATE ${CMAKE_JS_LIB} ${TOMCRYPT_LIBRARIES})
+
+execute_process(COMMAND node -p "require('node-addon-api').include"
+	WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+	OUTPUT_VARIABLE NODE_ADDON_API_DIR
+)
+# strip `"` and `\n` from the output above
+string(REPLACE "\n" "" NODE_ADDON_API_DIR ${NODE_ADDON_API_DIR})
+string(REPLACE "\"" "" NODE_ADDON_API_DIR ${NODE_ADDON_API_DIR})
+
+add_compile_definitions(StepmaniaJS PRIVATE
+	CMAKE_POWERED
+	HAVE_SNPRINTF
+)
+
+include_directories(${CMAKE_JS_INC} ${NODE_ADDON_API_DIR})

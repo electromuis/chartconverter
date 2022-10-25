@@ -115,6 +115,7 @@ enum StepsType
 	NUM_StepsType,		// leave this at the end
 	StepsType_Invalid,
 };
+RString StepsTypeToString( StepsType s );
 LuaDeclareType( StepsType );
 
 /** @brief The various play modes available. */
