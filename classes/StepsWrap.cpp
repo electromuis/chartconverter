@@ -21,6 +21,7 @@ Napi::Object StepsWrap::Create(Napi::Env env, Steps* steps)
         InstanceAccessor<&StepsWrap::GetStyle>("style", napi_enumerable),
         
         InstanceMethod<&StepsWrap::GetHash>("GetHash"),
+        InstanceMethod<&StepsWrap::GetHashInput>("GetHashInput"),
     }, steps);
 
     return func.New({});
@@ -225,15 +226,23 @@ RString StepsWrap::NormallizedChart()
 
 // Groovestats hashing functions END
 
-Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
+Napi::Value StepsWrap::GetHashInput(const Napi::CallbackInfo &info)
 {
     RString format = (std::string) info[0].As<Napi::String>();
 
     if(format == "GS2" || format == "GS3") {
         RString hashInput = "";
 
-        // NOTES
-        hashInput.append(NormallizedChart());
+		try {
+        	hashInput.append(NormallizedChart());
+		}
+		catch (runtime_error e)
+		{
+			Napi::TypeError::New(info.Env(), e.what())
+            	.ThrowAsJavaScriptException();
+
+        	return info.Env().Null();
+		}
 
         // BPM
         auto bpms = steps->m_pSong->m_SongTiming.GetTimingSegments(SEGMENT_BPM);
@@ -248,7 +257,46 @@ Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
             }
         }
 
-        // cout << hashInput;
+        return Napi::String::New(info.Env(), hashInput);
+    }
+    else {
+        Napi::TypeError::New(info.Env(), "Unsupported hash format")
+            .ThrowAsJavaScriptException();
+
+        return info.Env().Null();
+    }
+}
+
+Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
+{
+    RString format = (std::string) info[0].As<Napi::String>();
+
+    if(format == "GS2" || format == "GS3") {
+        RString hashInput = "";
+
+		try {
+        	hashInput.append(NormallizedChart());
+		}
+		catch (runtime_error e)
+		{
+			Napi::TypeError::New(info.Env(), e.what())
+            	.ThrowAsJavaScriptException();
+
+        	return info.Env().Null();
+		}
+
+        // BPM
+        auto bpms = steps->m_pSong->m_SongTiming.GetTimingSegments(SEGMENT_BPM);
+
+        for(int i=0; i<bpms.size(); i++) {
+            BPMSegment* bpm = (BPMSegment*)bpms[i];
+            hashInput.append(NormalizeDecimal(bpm->GetBeat()));
+            hashInput.append("=");
+            hashInput.append(NormalizeDecimal(bpm->GetBPM()));
+            if(i < bpms.size()-1) {
+                hashInput.append(";");
+            }
+        }
 
         CryptManager crypt;
         RString hash;

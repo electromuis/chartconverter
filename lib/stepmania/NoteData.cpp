@@ -20,7 +20,10 @@ void NoteData::Init()
 
 void NoteData::SetNumTracks( int iNewNumTracks )
 {
-	ASSERT( iNewNumTracks > 0 );
+	if(iNewNumTracks <= 0)
+	{
+		throw runtime_error("Can't set to no tracks");
+	}
 
 	m_TapNotes.resize( iNewNumTracks );
 }

@@ -15,6 +15,7 @@ public:
     Napi::Value GetCredit(const Napi::CallbackInfo &info);
     Napi::Value GetStyle(const Napi::CallbackInfo &info);
     Napi::Value GetHash(const Napi::CallbackInfo &info);
+    Napi::Value GetHashInput(const Napi::CallbackInfo &info);
 
 protected:
     RString NormallizedChart();
