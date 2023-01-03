@@ -11,6 +11,8 @@
 #include "StepmaniaJS.h"
 
 #include <iostream>
+#include <vector>
+#include <cmath>
 
 Napi::Object StepsWrap::Create(Napi::Env env, Steps* steps)
 {
@@ -60,80 +62,22 @@ Napi::Value StepsWrap::GetStyle(const Napi::CallbackInfo &info)
 
 static const int BEATS_PER_MEASURE = 4;
 static const int ROWS_PER_MEASURE = ROWS_PER_BEAT * BEATS_PER_MEASURE;
-static const int divisions[] = {
-    1,
-    2,
-    4,
-    8,
-    12,
-    16,
-    24,
-    32,
-    48,
-    64,
-    192,
-};
 
-static const int numDivisions = 11;
-
-float GSNoteTypeToDivision( int divisionIndex )
+RString NormalizeDecimal(float decimal, RString format)
 {
-	switch( divisions[divisionIndex] )
-	{
-	case 1:	return 1.0f*4;
-	case 2:	return 1.0f*2;
-	case 4:	return 1.0f;	// quarter notes
-	case 8:	return 1.0f/2;	// eighth notes
-	case 12:	return 1.0f/3;	// quarter note triplets
-	case 16:	return 1.0f/4;	// sixteenth notes
-	case 24:	return 1.0f/6;	// eighth note triplets
-	case 32:	return 1.0f/8;	// thirty-second notes
-	case 48:	return 1.0f/12; // sixteenth note triplets
-	case 64:	return 1.0f/16; // sixty-fourth notes
-	case 192:	return 1.0f/48; // sixty-fourth note triplets
-	default:
-		FAIL_M(ssprintf("Unrecognized devision index type: %i", divisionIndex));
+
+
+	// V2 goes down
+	if(format == "GS2") {
+		decimal = floor(decimal * 10000.0f) / 10000.0f;
 	}
-}
 
-float GSGetSmallestNoteTypeInRange( const NoteData &n, int iStartIndex, int iEndIndex )
-{
-    for(int d=0; d<numDivisions; d++)
-    {
-        int iRowSpacing = lrintf( GSNoteTypeToDivision(d) * ROWS_PER_BEAT );
+	// V3 goes up
+	if(format == "GS3") {
+		decimal = ceil(decimal * 10000.0f) / 10000.0f;
+	}
 
-		bool bFoundSmallerNote = false;
-		// for each index in this measure
-		FOREACH_NONEMPTY_ROW_ALL_TRACKS_RANGE( n, i, iStartIndex, iEndIndex )
-		{
-			if( i % iRowSpacing == 0 )
-				continue;	// skip
-			
-			if( !n.IsRowEmpty(i) )
-			{
-				bFoundSmallerNote = true;
-				break;
-			}
-		}
-
-		if( bFoundSmallerNote )
-			continue;	// searching the next NoteType
-		else
-			return GSNoteTypeToDivision(d);	// stop searching. We found the smallest NoteType
-    }
-	return GSNoteTypeToDivision(0);	// well-formed notes created in the editor should never get here
-}
-
-float GSGetSmallestNoteTypeForMeasure( const NoteData &nd, int iMeasureIndex )
-{
-	const int iMeasureStartIndex = iMeasureIndex * ROWS_PER_MEASURE;
-	const int iMeasureEndIndex = (iMeasureIndex+1) * ROWS_PER_MEASURE;
-
-	return GSGetSmallestNoteTypeInRange( nd, iMeasureStartIndex, iMeasureEndIndex );
-}
-
-RString NormalizeDecimal(float decimal)
-{
+	//decimal = ceil(decimal * 1000.0f) / 1000.0f;
     return ssprintf("%.3f", decimal);
 }
 
@@ -167,13 +111,51 @@ RString StepsWrap::NormallizedChart()
 			if( m )
 				sRet.append( "\n,\n" );
 
-            int iRowSpacing = lrintf(GSGetSmallestNoteTypeForMeasure(nd, m) * ROWS_PER_BEAT);
-			const int iMeasureStartRow = m * ROWS_PER_MEASURE;
+			NoteType nt = NoteDataUtil::GetSmallestNoteTypeForMeasure( nd, m );
+			int iRowSpacing = BeatToNoteRow( NoteTypeToBeat(nt) );
+
+        	const int iMeasureStartRow = m * ROWS_PER_MEASURE;
 			const int iMeasureLastRow = (m+1) * ROWS_PER_MEASURE - 1;
+
+			std::vector<int> rowIndexes;
 
 			for( int r=iMeasureStartRow; r<=iMeasureLastRow; r+=iRowSpacing )
 			{
-                if(r != iMeasureStartRow)
+				rowIndexes.push_back(r);
+			}
+
+			bool minimal = false;
+			while(!minimal && rowIndexes.size() % 2 == 0)
+			{
+				bool all_zeroes = true;
+				for(int i=1; i<rowIndexes.size(); i+=2)
+				{
+					if(!nd.IsRowEmpty(rowIndexes.at(i))) {
+						all_zeroes = false;
+						break;
+					}
+				}
+
+				if(all_zeroes) {
+					std::vector<int> newIndexes;
+					
+					for( int ri=0; ri<rowIndexes.size(); ri += 2 )
+					{
+						newIndexes.push_back(rowIndexes.at(ri));
+					}
+					rowIndexes = newIndexes;
+				} else {
+					minimal = true;
+				}
+			}
+
+			//cout << "Rows: " << rowIndexes.size() << std::endl;
+
+			for( int ri=0; ri<rowIndexes.size(); ri++ )
+			{
+				int r = rowIndexes.at(ri);
+                
+				if(ri > 0)
                     sRet.append( 1, '\n' );
 
 				for( int t = 0; t < nd.GetNumTracks(); ++t )
@@ -249,11 +231,11 @@ Napi::Value StepsWrap::GetHashInput(const Napi::CallbackInfo &info)
 
         for(int i=0; i<bpms.size(); i++) {
             BPMSegment* bpm = (BPMSegment*)bpms[i];
-            hashInput.append(NormalizeDecimal(bpm->GetBeat()));
+            hashInput.append(NormalizeDecimal(bpm->GetBeat(), format));
             hashInput.append("=");
-            hashInput.append(NormalizeDecimal(bpm->GetBPM()));
+            hashInput.append(NormalizeDecimal(bpm->GetBPM(), format));
             if(i < bpms.size()-1) {
-                hashInput.append(";");
+                hashInput.append(",\n");
             }
         }
 
@@ -290,11 +272,11 @@ Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
 
         for(int i=0; i<bpms.size(); i++) {
             BPMSegment* bpm = (BPMSegment*)bpms[i];
-            hashInput.append(NormalizeDecimal(bpm->GetBeat()));
+            hashInput.append(NormalizeDecimal(bpm->GetBeat(), format));
             hashInput.append("=");
-            hashInput.append(NormalizeDecimal(bpm->GetBPM()));
+            hashInput.append(NormalizeDecimal(bpm->GetBPM(), format));
             if(i < bpms.size()-1) {
-                hashInput.append(";");
+                hashInput.append(",");
             }
         }
 

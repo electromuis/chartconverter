@@ -268,7 +268,7 @@ void SMLoader::LoadFromTokens(
 
 	out.SetSMNoteData( sNoteData );
 
-	out.TidyUpData();
+	//out.TidyUpData();
 }
 
 void SMLoader::ParseBPMs( vector< pair<float, float> > &out, const RString line, const int rowsPerBeat )
@@ -841,7 +841,7 @@ bool SMLoader::LoadNoteDataFromSimfile( RageFile& f, Steps &out )
 			RString noteData = sParams[6];
 			Trim( noteData );
 			out.SetSMNoteData( noteData );
-			out.TidyUpData();
+			//out.TidyUpData();
 			return true;
 		}
 	}
@@ -913,8 +913,17 @@ bool SMLoader::LoadFromSimfile( RageFile& f, Song &out )
 		}
 	}
 
-	// Turn negative time changes into warps
-	ProcessBPMsAndStops(out.m_SongTiming, reused_song_info.BPMChanges, reused_song_info.Stops);
+	for(auto& t : reused_song_info.BPMChanges)
+	{
+		out.m_SongTiming.AddSegment(BPMSegment(BeatToNoteRow(t.first), t.second));
+	}
+
+	for(auto& t : reused_song_info.Stops)
+	{
+		out.m_SongTiming.AddSegment(StopSegment(BeatToNoteRow(t.first), t.second));
+	}
+
+	//ProcessBPMsAndStops(out.m_SongTiming, reused_song_info.BPMChanges, reused_song_info.Stops);
 
 	return true;
 }
