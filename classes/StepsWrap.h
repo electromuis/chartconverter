@@ -17,7 +17,10 @@ public:
     Napi::Value GetHash(const Napi::CallbackInfo &info);
     Napi::Value GetHashInput(const Napi::CallbackInfo &info);
 
+    
+
 protected:
+    RString CreateHashInput(RString format);
     RString NormallizedChart();
     Steps* steps;
 };

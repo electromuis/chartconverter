@@ -63,18 +63,17 @@ Napi::Value StepsWrap::GetStyle(const Napi::CallbackInfo &info)
 static const int BEATS_PER_MEASURE = 4;
 static const int ROWS_PER_MEASURE = ROWS_PER_BEAT * BEATS_PER_MEASURE;
 
-RString NormalizeDecimal(float decimal, RString format)
+RString NormalizeDecimal(double decimal, RString format)
 {
-
-
 	// V2 goes down
+	
 	if(format == "GS2") {
-		decimal = floor(decimal * 10000.0f) / 10000.0f;
+		decimal = floor(decimal * 10000.0d) / 10000.0d;
 	}
 
 	// V3 goes up
 	if(format == "GS3") {
-		decimal = ceil(decimal * 10000.0f) / 10000.0f;
+		decimal = ceil(decimal * 10000.0d) / 10000.0d;
 	}
 
 	//decimal = ceil(decimal * 1000.0f) / 1000.0f;
@@ -208,45 +207,41 @@ RString StepsWrap::NormallizedChart()
 
 // Groovestats hashing functions END
 
+RString StepsWrap::CreateHashInput(RString format)
+{
+	RString hashInput = "";
+	hashInput.append(NormallizedChart());
+
+	// BPM
+	auto bpms = steps->m_pSong->m_SongTiming.GetTimingSegments(SEGMENT_BPM);
+
+	for(int i=0; i<bpms.size(); i++) {
+		BPMSegment* bpm = (BPMSegment*)bpms[i];
+		hashInput.append(NormalizeDecimal(bpm->GetBeat(), format));
+		hashInput.append("=");
+		hashInput.append(NormalizeDecimal(bpm->GetBPM(), format));
+		if(i < bpms.size()-1) {
+			hashInput.append(",\n");
+		}
+	}
+
+	return hashInput;
+}
+
 Napi::Value StepsWrap::GetHashInput(const Napi::CallbackInfo &info)
 {
     RString format = (std::string) info[0].As<Napi::String>();
 
-    if(format == "GS2" || format == "GS3") {
-        RString hashInput = "";
+	try {
+		return Napi::String::New(info.Env(), CreateHashInput(format));
+	}
+	catch (runtime_error e)
+	{
+		Napi::TypeError::New(info.Env(), e.what())
+			.ThrowAsJavaScriptException();
 
-		try {
-        	hashInput.append(NormallizedChart());
-		}
-		catch (runtime_error e)
-		{
-			Napi::TypeError::New(info.Env(), e.what())
-            	.ThrowAsJavaScriptException();
-
-        	return info.Env().Null();
-		}
-
-        // BPM
-        auto bpms = steps->m_pSong->m_SongTiming.GetTimingSegments(SEGMENT_BPM);
-
-        for(int i=0; i<bpms.size(); i++) {
-            BPMSegment* bpm = (BPMSegment*)bpms[i];
-            hashInput.append(NormalizeDecimal(bpm->GetBeat(), format));
-            hashInput.append("=");
-            hashInput.append(NormalizeDecimal(bpm->GetBPM(), format));
-            if(i < bpms.size()-1) {
-                hashInput.append(",\n");
-            }
-        }
-
-        return Napi::String::New(info.Env(), hashInput);
-    }
-    else {
-        Napi::TypeError::New(info.Env(), "Unsupported hash format")
-            .ThrowAsJavaScriptException();
-
-        return info.Env().Null();
-    }
+		return info.Env().Null();
+	}
 }
 
 Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
@@ -257,7 +252,7 @@ Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
         RString hashInput = "";
 
 		try {
-        	hashInput.append(NormallizedChart());
+			hashInput = CreateHashInput(format);
 		}
 		catch (runtime_error e)
 		{
@@ -266,19 +261,6 @@ Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
 
         	return info.Env().Null();
 		}
-
-        // BPM
-        auto bpms = steps->m_pSong->m_SongTiming.GetTimingSegments(SEGMENT_BPM);
-
-        for(int i=0; i<bpms.size(); i++) {
-            BPMSegment* bpm = (BPMSegment*)bpms[i];
-            hashInput.append(NormalizeDecimal(bpm->GetBeat(), format));
-            hashInput.append("=");
-            hashInput.append(NormalizeDecimal(bpm->GetBPM(), format));
-            if(i < bpms.size()-1) {
-                hashInput.append(",");
-            }
-        }
 
         CryptManager crypt;
         RString hash;
@@ -291,8 +273,8 @@ Napi::Value StepsWrap::GetHash(const Napi::CallbackInfo &info)
             hash = BinaryToHex(crypt.GetSHA1ForString(hashInput));
             hashLength = 16;
         }
-        RString hashOut = hash.substr(0, hashLength);
 
+        RString hashOut = hash.substr(0, hashLength);
         return Napi::String::New(info.Env(), hashOut);
     }
     else {
